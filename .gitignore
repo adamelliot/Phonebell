@@ -1,0 +1,3 @@
+.DS_Store
+service/config.env
+service/google-credentials.json

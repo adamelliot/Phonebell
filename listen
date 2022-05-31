@@ -1,0 +1,81 @@
+#! /usr/bin/env python3
+
+import argparse
+from re import L
+import sys
+import subprocess
+import os
+import io
+
+parser = argparse.ArgumentParser()
+
+def read_version():
+    f = open('docker/VERSION')
+    return f.read().strip()
+
+def is_raspberrypi():
+    try:
+        with io.open('/sys/firmware/devicetree/base/model', 'r') as m:
+            if 'raspberry pi' in m.read().lower(): return True
+    except Exception: pass
+    return False
+
+def run_listener():
+    version = read_version()
+
+    init_cmd = ' '.join([
+        'GOOGLE_APPLICATION_CREDENTIALS=google-credentials.json',
+        'python3',
+        'listen-for-doorbell.py'
+    ])
+
+    docker_cmd = ['docker', 'run']
+
+    if is_raspberrypi():
+        docker_cmd += ['-d', '--restart', 'unless-stopped', '--security-opt', 'seccomp:unconfined', '--volume', '/sys:/sys']
+    else:
+        docker_cmd += ['-it', '--rm', '--platform', 'linux/arm/v7']
+
+    docker_cmd += ['--volume', '{}:/input'.format(os.getcwd())]
+    docker_cmd += ['--volume', '{}/service:/work'.format(os.getcwd())]
+
+    docker_cmd += ['ghcr.io/adamelliot/phonebell:' + version]
+    docker_cmd += ['bash', '-c', init_cmd + "; bash"]
+
+    print(docker_cmd)
+
+    subprocess.run(docker_cmd)
+
+def run_keepalive():
+    version = read_version()
+
+    init_cmd = ' '.join([
+        './gcloud-authorize.sh',
+        'refresh-loop'
+    ])
+
+    docker_cmd = ['docker', 'run']
+
+    # docker_cmd += ['-it', '--rm', '--platform', 'linux/arm/v7']
+    docker_cmd += ['-d', '--restart', 'unless-stopped']
+
+    docker_cmd += ['--volume', '{}:/input'.format(os.getcwd())]
+    docker_cmd += ['--volume', '{}/service:/work'.format(os.getcwd())]
+
+    docker_cmd += ['ghcr.io/adamelliot/phonebell:' + version]
+    docker_cmd += ['bash', '-c', init_cmd + "; bash"]
+
+    print(docker_cmd)
+
+    subprocess.run(docker_cmd)
+
+def main():
+    args = parser.parse_args()
+
+    if is_raspberrypi():
+        run_keepalive()
+
+    run_listener()
+
+
+main()
